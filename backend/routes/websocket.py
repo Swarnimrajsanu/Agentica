@@ -2,6 +2,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from typing import Optional
 from loguru import logger
 import uuid
+import asyncio
 
 from websocket.manager import websocket_manager
 
@@ -108,24 +109,64 @@ async def websocket_simulate(websocket: WebSocket, topic: str):
         # Create callback for real-time updates
         async def simulation_callback(update: dict):
             await websocket_manager.send_personal_message(update, client_id)
-        
-        # Run simulation with callback
-        result = await simulation_service.run_simulation(
-            agents=agents,
-            topic=topic_decoded,
-            rounds=3,
-            callback=simulation_callback
-        )
+
+        # Run simulation in background so we can receive human posts live
+        sim_task: Optional[asyncio.Task] = None
+        sim_result: dict = {}
+
+        async def _run():
+            nonlocal sim_result
+            sim_result = await simulation_service.run_simulation(
+                agents=agents,
+                topic=topic_decoded,
+                rounds=3,
+                callback=simulation_callback,
+            )
+
+        sim_task = asyncio.create_task(_run())
+
+        # Wait for simulation_start to learn simulation_id by polling active_simulations key
+        # (run_simulation uses deterministic sim_id from topic)
+        simulation_id = f"sim_{topic_decoded.replace(' ', '_')[:50]}"
+
+        # Listen for client messages while simulation runs
+        while True:
+            if sim_task.done():
+                break
+            try:
+                data = await asyncio.wait_for(websocket.receive_json(), timeout=0.5)
+            except asyncio.TimeoutError:
+                continue
+
+            mtype = data.get("type")
+            if mtype == "human_message":
+                msg = (data.get("message") or "").strip()
+                influence = float(data.get("influence_level", 0.6))
+                name = (data.get("display_name") or "Human").strip()
+                if msg:
+                    ok = simulation_service.inject_human_message(
+                        simulation_id=simulation_id,
+                        message=msg,
+                        influence_level=influence,
+                        display_name=name,
+                    )
+                    await websocket_manager.send_personal_message(
+                        {"type": "human_ack", "accepted": bool(ok)},
+                        client_id,
+                    )
+            elif mtype == "close":
+                break
         
         # Send final result
         await websocket_manager.send_personal_message({
             "type": "simulation_complete",
             "message": "✅ Simulation completed successfully!",
             "result": {
-                "simulation_id": result.get("simulation_id"),
-                "status": result.get("status"),
-                "messages_count": len(result.get("messages", [])),
-                "consensus": result.get("consensus")
+                "simulation_id": sim_result.get("simulation_id"),
+                "status": sim_result.get("status"),
+                "messages_count": len(sim_result.get("messages", [])),
+                "consensus": sim_result.get("consensus"),
+                "final_prediction": sim_result.get("final_prediction"),
             }
         }, client_id)
         

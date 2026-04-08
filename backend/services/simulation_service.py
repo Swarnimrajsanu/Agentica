@@ -1,10 +1,12 @@
 from loguru import logger
-from typing import List, Dict, Optional, Callable
+from typing import List, Dict, Optional, Callable, Any
+import asyncio
 from services.llm_services import llm_service
 from services.memory_service import memory_service
 from services.graph_service import graph_service
 from config.settings import settings
 from services.consensus_heatmap_service import consensus_heatmap_service
+from services.aggregation_engine import aggregation_engine
 
 
 class SimulationService:
@@ -12,7 +14,35 @@ class SimulationService:
     
     def __init__(self):
         self.active_simulations = {}
+        self._human_inbox: Dict[str, asyncio.Queue] = {}
         logger.info("Simulation Service initialized")
+
+    def inject_human_message(
+        self,
+        simulation_id: str,
+        message: str,
+        influence_level: float = 0.6,
+        display_name: str = "Human",
+    ) -> bool:
+        """
+        Inject a human participant post into a running simulation.
+        The message will be appended at the start of the next round.
+        """
+        sim = self.active_simulations.get(simulation_id)
+        if not sim or sim.get("status") != "running":
+            return False
+        if simulation_id not in self._human_inbox:
+            self._human_inbox[simulation_id] = asyncio.Queue()
+        payload = {
+            "message": message,
+            "influence_level": max(0.1, min(1.0, float(influence_level))),
+            "display_name": (display_name or "Human").strip()[:40],
+        }
+        try:
+            self._human_inbox[simulation_id].put_nowait(payload)
+            return True
+        except Exception:
+            return False
     
     async def run_simulation(
         self,
@@ -46,6 +76,7 @@ class SimulationService:
             "topic": topic,
             "messages": []
         }
+        self._human_inbox[simulation_id] = asyncio.Queue()
         
         try:
             # Send initial message to callback
@@ -67,6 +98,30 @@ class SimulationService:
                         "round": round_num,
                         "total_rounds": max_rounds
                     })
+
+                # Drain any pending human posts and inject at start of the round
+                try:
+                    inbox = self._human_inbox.get(simulation_id)
+                    while inbox and not inbox.empty():
+                        item = inbox.get_nowait()
+                        human_message = {
+                            "simulation_id": simulation_id,
+                            "round": round_num,
+                            "agent_role": item.get("display_name", "Human"),
+                            "agent_personality": f"Human participant (reach={item.get('influence_level', 0.6):.2f})",
+                            "content": item.get("message", ""),
+                            "timestamp": str(__import__("datetime").datetime.utcnow()),
+                            "meta": {
+                                "type": "human",
+                                "influence_level": item.get("influence_level", 0.6),
+                            },
+                        }
+                        all_messages.append(human_message)
+                        await memory_service.save_message(human_message)
+                        if callback:
+                            await callback({"type": "human_injected", "message": human_message})
+                except Exception as e:
+                    logger.warning(f"Human injection drain failed: {e}")
                 
                 # Each agent speaks in this round
                 for agent in agents:
@@ -119,6 +174,23 @@ class SimulationService:
                         })
                     except Exception as e:
                         logger.warning(f"Consensus heatmap generation failed: {e}")
+
+                    # Dynamic prediction update after each round (includes any human posts)
+                    try:
+                        interim_consensus = await self._generate_consensus(topic=topic, conversation=all_messages)
+                        interim_prediction = await aggregation_engine.generate_final_prediction(
+                            topic=topic,
+                            messages=all_messages,
+                            consensus=interim_consensus
+                        )
+                        await callback({
+                            "type": "prediction_update",
+                            "round": round_num,
+                            "consensus": interim_consensus,
+                            "prediction": interim_prediction
+                        })
+                    except Exception as e:
+                        logger.warning(f"Dynamic prediction update failed: {e}")
             
             # Generate consensus
             consensus = await self._generate_consensus(
@@ -158,11 +230,19 @@ class SimulationService:
                 })
             
             logger.info(f"Simulation '{simulation_id}' completed successfully")
+            try:
+                self._human_inbox.pop(simulation_id, None)
+            except Exception:
+                pass
             return result
             
         except Exception as e:
             logger.error(f"Simulation error: {e}")
             self.active_simulations[simulation_id]["status"] = "failed"
+            try:
+                self._human_inbox.pop(simulation_id, None)
+            except Exception:
+                pass
             
             if callback:
                 await callback({

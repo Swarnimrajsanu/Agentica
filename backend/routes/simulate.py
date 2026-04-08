@@ -36,6 +36,21 @@ class SimulationResponse(BaseModel):
 
 
 # ─────────────────────────────────────────────
+# HUMAN-IN-THE-LOOP MODELS
+# ─────────────────────────────────────────────
+
+class HumanInjectRequest(BaseModel):
+    message: str = Field(..., description="Human participant post", min_length=1, max_length=4000)
+    influence_level: Optional[float] = Field(0.6, description="0.1-1.0 reach multiplier", ge=0.1, le=1.0)
+    display_name: Optional[str] = Field("Human", description="Display name for the user", min_length=1, max_length=40)
+
+
+class HumanInjectResponse(BaseModel):
+    simulation_id: str
+    accepted: bool
+
+
+# ─────────────────────────────────────────────
 # ENDPOINTS
 # ─────────────────────────────────────────────
 
@@ -103,3 +118,20 @@ async def list_active_simulations():
     """List all currently active simulations."""
     active = simulation_service.list_active_simulations()
     return {"active_simulations": active, "count": len(active)}
+
+
+@router.post("/{simulation_id}/inject-human", response_model=HumanInjectResponse)
+async def inject_human(simulation_id: str, request: HumanInjectRequest):
+    """
+    Inject a human participant message into a running simulation.
+    The message will appear at the start of the next round and affect subsequent predictions.
+    """
+    accepted = simulation_service.inject_human_message(
+        simulation_id=simulation_id,
+        message=request.message,
+        influence_level=request.influence_level or 0.6,
+        display_name=request.display_name or "Human",
+    )
+    if not accepted:
+        raise HTTPException(status_code=400, detail="Simulation not running or not found")
+    return {"simulation_id": simulation_id, "accepted": True}
