@@ -14,6 +14,7 @@ class MemoryService:
         self.db = self.client[settings.MONGO_DB_NAME]
         self.messages_collection = self.db.messages
         self.agent_memory_collection = self.db.agent_memory
+        self.simulations_collection = self.db.simulations
         logger.info(f"MongoDB connection established (DB: {settings.MONGO_DB_NAME})")
     
     async def close(self):
@@ -21,6 +22,64 @@ class MemoryService:
         if self.client:
             self.client.close()
             logger.info("MongoDB connection closed")
+            
+    async def save_simulation(self, simulation_id: str, data: dict) -> bool:
+        """
+        Save or update simulation metadata.
+        """
+        try:
+            doc = copy.deepcopy(data)
+            doc["updated_at"] = datetime.utcnow()
+            if "created_at" not in doc:
+                doc["created_at"] = datetime.utcnow()
+            
+            await self.simulations_collection.update_one(
+                {"simulation_id": simulation_id},
+                {"$set": doc},
+                upsert=True
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Error saving simulation {simulation_id}: {e}")
+            return False
+
+    async def list_simulations(self, limit: int = 20) -> list:
+        """
+        Retrieve list of simulations from database.
+        """
+        try:
+            cursor = self.simulations_collection.find().sort("updated_at", -1).limit(limit)
+            sims = await cursor.to_list(length=limit)
+            return [self._sanitize_document(s) for s in sims]
+        except Exception as e:
+            logger.error(f"Error listing simulations: {e}")
+            return []
+
+    async def get_simulation(self, simulation_id: str) -> Optional[dict]:
+        """
+        Retrieve a single simulation by ID.
+        """
+        try:
+            doc = await self.simulations_collection.find_one({"simulation_id": simulation_id})
+            return self._sanitize_document(doc)
+        except Exception as e:
+            logger.error(f"Error getting simulation {simulation_id}: {e}")
+            return None
+
+    async def delete_simulation(self, simulation_id: str) -> bool:
+        """
+        Delete simulation and all its messages.
+        """
+        try:
+            # Delete simulation metadata
+            await self.simulations_collection.delete_one({"simulation_id": simulation_id})
+            # Delete all messages for this simulation
+            await self.messages_collection.delete_many({"simulation_id": simulation_id})
+            logger.info(f"Deleted simulation {simulation_id} and its messages")
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting simulation {simulation_id}: {e}")
+            return False
     
     def _sanitize_document(self, doc: dict) -> dict:
         """

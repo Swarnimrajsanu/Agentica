@@ -120,6 +120,24 @@ async def list_active_simulations():
     return {"active_simulations": active, "count": len(active)}
 
 
+@router.get("/history")
+async def list_simulation_history():
+    """List historical simulations from database."""
+    from services.memory_service import memory_service
+    history = await memory_service.list_simulations(limit=20)
+    return {"history": history, "count": len(history)}
+
+
+@router.delete("/{simulation_id}")
+async def delete_simulation(simulation_id: str):
+    """Delete a simulation from history."""
+    from services.memory_service import memory_service
+    success = await memory_service.delete_simulation(simulation_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to delete simulation")
+    return {"message": "Simulation deleted successfully"}
+
+
 @router.post("/{simulation_id}/inject-human", response_model=HumanInjectResponse)
 async def inject_human(simulation_id: str, request: HumanInjectRequest):
     """

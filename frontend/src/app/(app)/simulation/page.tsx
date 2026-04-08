@@ -13,6 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useSimulationSocket } from "@/hooks/useSimulationSocket";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/cn";
+import { RelationshipGraph } from "@/components/RelationshipGraph";
+import { Trash2 } from "lucide-react";
 
 type Stance = "support" | "oppose" | "neutral";
 
@@ -164,7 +166,43 @@ export default function SimulationPage() {
   const topic = params.get("topic") || "Should we launch an AI note-taking app?";
 
   const socket = useSimulationSocket(topic);
-  const [tab, setTab] = useState<"twitter" | "reddit">("twitter");
+  const [tab, setTab] = useState<"twitter" | "reddit" | "graph">("twitter");
+  const [allSims, setAllSims] = useState<any[]>([]);
+
+  // Fetch all simulations (active + history)
+  useEffect(() => {
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api";
+    Promise.all([
+        fetch(`${apiBase}/simulate/active`).then(res => res.json()),
+        fetch(`${apiBase}/simulate/history`).then(res => res.json())
+    ]).then(([activeData, historyData]) => {
+        const active = activeData.active_simulations || [];
+        const history = historyData.history || [];
+        
+        // combine and uniquify by ID
+        const combined = [...active];
+        history.forEach((h: any) => {
+            if (!combined.find(s => s.id === h.simulation_id || s.simulation_id === h.simulation_id)) {
+                combined.push(h);
+            }
+        });
+        setAllSims(combined);
+    }).catch(err => console.error("Failed to fetch simulations", err));
+  }, [topic]);
+
+  const handleDelete = async (e: React.MouseEvent, simId: string) => {
+    e.stopPropagation();
+    if (!confirm("Are you sure you want to delete this simulation?")) return;
+    
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api";
+    try {
+        await fetch(`${apiBase}/simulate/${simId}`, { method: 'DELETE' });
+        setAllSims(prev => prev.filter(s => (s.id || s.simulation_id) !== simId));
+    } catch (err) {
+        console.error("Delete failed", err);
+    }
+  };
+
   const [humanMessage, setHumanMessage] = useState("");
   const [humanName, setHumanName] = useState("Human");
   const [influence, setInfluence] = useState(0.6);
@@ -298,8 +336,45 @@ export default function SimulationPage() {
       <Topbar title="Simulation (real-time)" status={{ connected: socket.connected, running: socket.running }} />
 
       <div className="mt-4 grid gap-4 lg:grid-cols-12">
-        {/* LEFT: Active Agents */}
-        <Card className="lg:col-span-3">
+        {/* LEFT: Active Agents + Simulations */}
+        <div className="lg:col-span-3 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Simulation History</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {allSims.length === 0 ? (
+                <div className="text-xs text-white/40 p-2">No historical simulations found.</div>
+              ) : (
+                allSims.map((sim) => (
+                  <div key={sim.id || sim.simulation_id} className="group relative">
+                    <button
+                        onClick={() => router.push(`/simulation?topic=${encodeURIComponent(sim.topic)}`)}
+                        className={cn(
+                            "w-full text-left p-2 rounded-xl text-[11px] transition glass border border-white/5 hover:border-white/20",
+                            topic === sim.topic ? "ring-1 ring-(--accent-2)" : ""
+                        )}
+                    >
+                        <div className="font-semibold text-white/80 truncate pr-6">{sim.topic}</div>
+                        <div className="text-white/40 mt-0.5 flex justify-between">
+                            <span>Round {sim.round || sim.messages?.length || 0}</span>
+                            <span className="capitalize">{sim.status}</span>
+                        </div>
+                    </button>
+                    <button
+                        onClick={(e) => handleDelete(e, sim.id || sim.simulation_id)}
+                        className="absolute top-2 right-2 p-1 rounded-md text-white/20 hover:text-white/80 hover:bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Delete simulation"
+                    >
+                        <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
           <CardHeader>
             <CardTitle>Active Agents</CardTitle>
           </CardHeader>
@@ -351,6 +426,7 @@ export default function SimulationPage() {
             </Button>
           </CardContent>
         </Card>
+        </div>
 
         {/* CENTER: Simulation Feed */}
         <Card className="lg:col-span-6">
@@ -397,6 +473,15 @@ export default function SimulationPage() {
               >
                 Reddit-Sim
               </button>
+              <button
+                className={cn(
+                  "glass rounded-2xl px-3 py-2 text-sm font-semibold text-white/70 transition col-span-2",
+                  tab === "graph" && "ring-2 ring-(--accent-2)/50 text-white",
+                )}
+                onClick={() => setTab("graph")}
+              >
+                Live Relationship Graph
+              </button>
             </div>
 
             {/* feed */}
@@ -404,8 +489,7 @@ export default function SimulationPage() {
               ref={feedRef}
               className="mt-3 max-h-[520px] space-y-2 overflow-auto rounded-2xl bg-black/20 p-2 ring-1 ring-white/10 scroll-smooth"
             >
-              {tab === "twitter" ? (
-                twitterMessages.map((m, idx) => {
+              {tab === "twitter" && twitterMessages.map((m, idx) => {
                   const st = stanceFromText(m.content);
                   const sc = stanceColor(st);
                   return (
@@ -436,14 +520,21 @@ export default function SimulationPage() {
                       </div>
                     </motion.div>
                   );
-                })
-              ) : (
+                })}
+
+              {tab === "reddit" && (
                 <div className="space-y-3">
                   {redditThreads.map(([r, msgs]) => (
                     <div key={r} className="rounded-2xl">
                       <RedditThread round={r} messages={msgs} />
                     </div>
                   ))}
+                </div>
+              )}
+
+              {tab === "graph" && (
+                <div className="h-[480px] w-full">
+                    <RelationshipGraph messages={socket.messages} graphData={socket.graphData} />
                 </div>
               )}
 

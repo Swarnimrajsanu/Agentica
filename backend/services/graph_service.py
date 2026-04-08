@@ -35,7 +35,7 @@ class GraphService:
                 # Default query - can be customized based on use case
                 cypher_query = """
                 MATCH (n)-[r]->(m)
-                WHERE n.name CONTAINS $search_term OR m.name CONTAINS $search_term
+                WHERE n['name'] CONTAINS $search_term OR m['name'] CONTAINS $search_term
                 RETURN n, r, m
                 LIMIT $limit
                 """
@@ -110,6 +110,32 @@ class GraphService:
         except Exception as e:
             logger.error(f"Error adding relationship: {e}")
             return None
+
+    async def extract_nodes_and_edges(self, text: str):
+        """Extract entities and relationships from text using LLM."""
+        from services.llm_services import llm_service
+        import json
+        
+        prompt = f"""Extract 2-3 key entities and their relationships from this text.
+        Text: {text}
+        
+        Respond with ONLY JSON:
+        {{
+          "nodes": [ {{"id": "entity_id", "label": "name", "type": "concept|risk|opportunity"}} ],
+          "links": [ {{"source": "id1", "target": "id2", "type": "rel_type"}} ]
+        }}
+        """
+        
+        try:
+            res = await llm_service.call_llm(prompt, temperature=0)
+            # Find JSON block
+            import re
+            match = re.search(r'\{.*\}', res, re.DOTALL)
+            if match:
+                return json.loads(match.group(0))
+        except Exception as e:
+            logger.warning(f"Entity extraction failed: {e}")
+        return {"nodes": [], "links": []}
 
 
 # Global graph service instance

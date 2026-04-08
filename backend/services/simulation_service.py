@@ -71,12 +71,16 @@ class SimulationService:
         
         # Initialize simulation
         self.active_simulations[simulation_id] = {
+            "simulation_id": simulation_id,
             "status": "running",
             "agents": agents,
             "topic": topic,
             "messages": []
         }
         self._human_inbox[simulation_id] = asyncio.Queue()
+        
+        # PERSIST START
+        await memory_service.save_simulation(simulation_id, self.active_simulations[simulation_id])
         
         try:
             # Send initial message to callback
@@ -149,10 +153,24 @@ class SimulationService:
                         
                         # Send to callback
                         if callback:
+                            # 1. Send text response
                             await callback({
                                 "type": "agent_response",
                                 "message": message
                             })
+                            
+                            # 2. Extract and send graph update
+                            try:
+                                graph_data = await graph_service.extract_nodes_and_edges(agent_response)
+                                if graph_data and graph_data.get("nodes"):
+                                    await callback({
+                                        "type": "graph_update",
+                                        "nodes": graph_data["nodes"],
+                                        "links": graph_data["links"],
+                                        "agent": agent["role"]
+                                    })
+                            except Exception as ge:
+                                logger.warning(f"Live graph extraction failed: {ge}")
                 
                 if callback:
                     await callback({
@@ -211,6 +229,9 @@ class SimulationService:
             self.active_simulations[simulation_id]["messages"] = all_messages
             self.active_simulations[simulation_id]["consensus"] = consensus
             self.active_simulations[simulation_id]["final_prediction"] = final_prediction
+            
+            # PERSIST COMPLETION
+            await memory_service.save_simulation(simulation_id, self.active_simulations[simulation_id])
             
             result = {
                 "simulation_id": simulation_id,

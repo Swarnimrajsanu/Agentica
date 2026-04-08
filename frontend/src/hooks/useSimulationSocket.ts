@@ -24,6 +24,7 @@ type SocketEvent =
         final_prediction?: unknown;
       };
     }
+  | { type: "graph_update"; nodes: any[]; links: any[]; agent?: string }
   | { type: "error"; message?: string };
 
 export type UseSimulationSocketState = {
@@ -31,6 +32,7 @@ export type UseSimulationSocketState = {
   running: boolean;
   round: number | null;
   messages: SimulationMessage[];
+  graphData: { nodes: any[]; links: any[] };
   heatmap?: { round: number; agents: string[]; matrix: number[][] };
   predictionUpdate?: { round: number; consensus: unknown; prediction: unknown };
   completed?: { simulation_id?: string; final_prediction?: unknown };
@@ -47,6 +49,7 @@ export function useSimulationSocket(topic: string): UseSimulationSocketState {
   const [running, setRunning] = useState(false);
   const [round, setRound] = useState<number | null>(null);
   const [messages, setMessages] = useState<SimulationMessage[]>([]);
+  const [graphData, setGraphData] = useState<{ nodes: any[]; links: any[] }>({ nodes: [], links: [] });
   const [heatmap, setHeatmap] = useState<UseSimulationSocketState["heatmap"]>();
   const [predictionUpdate, setPredictionUpdate] =
     useState<UseSimulationSocketState["predictionUpdate"]>();
@@ -91,6 +94,7 @@ export function useSimulationSocket(topic: string): UseSimulationSocketState {
       if (data.type === "simulation_starting") {
         setRunning(true);
         setMessages([]);
+        setGraphData({ nodes: [], links: [] });
         setRound(null);
         setCompleted(undefined);
       }
@@ -100,6 +104,17 @@ export function useSimulationSocket(topic: string): UseSimulationSocketState {
 
       if (data.type === "agent_response" || data.type === "human_injected") {
         setMessages((prev) => [...prev, data.message]);
+      }
+
+      if (data.type === "graph_update") {
+        setGraphData((prev) => {
+          const nodeMap = new Map(prev.nodes.map((n: any) => [n.id, n]));
+          data.nodes.forEach((n: any) => nodeMap.set(n.id, n));
+          return {
+            nodes: Array.from(nodeMap.values()),
+            links: [...prev.links, ...(data.links || [])],
+          };
+        });
       }
 
       if (data.type === "consensus_heatmap") {
@@ -159,6 +174,7 @@ export function useSimulationSocket(topic: string): UseSimulationSocketState {
     running,
     round,
     messages,
+    graphData,
     heatmap,
     predictionUpdate,
     completed,
