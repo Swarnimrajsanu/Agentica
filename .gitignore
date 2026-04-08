@@ -1,0 +1,194 @@
+# ══════════════════════════════════════════════
+# AGENTICA — .gitignore
+# ══════════════════════════════════════════════
+
+# ─────────────────────────────────────────────
+# ENVIRONMENT VARIABLES & SECRETS
+# ─────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.env
+
+# ─────────────────────────────────────────────
+# PYTHON
+# ─────────────────────────────────────────────
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# ─────────────────────────────────────────────
+# VIRTUAL ENVIRONMENTS
+# ─────────────────────────────────────────────
+.venv/
+venv/
+ENV/
+env/
+.ENV
+
+# ─────────────────────────────────────────────
+# CONDA
+# ─────────────────────────────────────────────
+.conda/
+conda.env/
+
+# ─────────────────────────────────────────────
+# IDE & EDITORS
+# ─────────────────────────────────────────────
+# PyCharm
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# ─────────────────────────────────────────────
+# JUPYTER NOTEBOOK
+# ─────────────────────────────────────────────
+.ipynb_checkpoints
+
+# ─────────────────────────────────────────────
+# PYTEST
+# ─────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# ─────────────────────────────────────────────
+# MYPY
+# ─────────────────────────────────────────────
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ─────────────────────────────────────────────
+# LOGS & TEMP FILES
+# ─────────────────────────────────────────────
+*.log
+logs/
+*.tmp
+*.temp
+temp/
+
+# ─────────────────────────────────────────────
+# OS FILES
+# ─────────────────────────────────────────────
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# ─────────────────────────────────────────────
+# DATABASE FILES (Local)
+# ─────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+data/*.db
+
+# ─────────────────────────────────────────────
+# MODEL CACHE & ARTIFACTS
+# ─────────────────────────────────────────────
+models/
+checkpoints/
+*.pt
+*.pth
+*.onnx
+*.bin
+
+# Hugging Face cache
+.huggingface/
+cache/
+
+# ─────────────────────────────────────────────
+# DOCKER
+# ─────────────────────────────────────────────
+# Docker compose override
+docker-compose.override.yml
+
+# Docker volumes
+*.volume/
+
+# ─────────────────────────────────────────────
+# DOCUMENTATION (Auto-generated)
+# ─────────────────────────────────────────────
+docs/_build/
+site/
+
+# ─────────────────────────────────────────────
+# SECURITY
+# ─────────────────────────────────────────────
+# Private keys
+*.pem
+*.key
+*.cert
+
+# AWS
+.aws/
+
+# ─────────────────────────────────────────────
+# PROJECT SPECIFIC
+# ─────────────────────────────────────────────
+# Test outputs
+test_results/
+coverage.xml
+
+# Local configuration overrides
+config/local.py
