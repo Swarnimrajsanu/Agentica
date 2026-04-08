@@ -1,0 +1,162 @@
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from typing import Optional
+from loguru import logger
+import uuid
+
+from websocket.manager import websocket_manager
+
+
+router = APIRouter()
+
+
+@router.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """
+    Main WebSocket endpoint for real-time simulation streaming.
+    
+    Client sends:
+    - {"type": "subscribe", "simulation_id": "sim_..."}
+    
+    Server sends:
+    - {"type": "connected", "message": "...", "client_id": "..."}
+    - {"type": "simulation_update", "simulation_id": "...", "data": {...}}
+    """
+    # Generate unique client ID
+    client_id = str(uuid.uuid4())
+    
+    # Connect
+    await websocket_manager.connect(websocket, client_id)
+    
+    try:
+        while True:
+            # Wait for messages from client
+            data = await websocket.receive_json()
+            message_type = data.get("type")
+            
+            if message_type == "subscribe":
+                simulation_id = data.get("simulation_id")
+                if simulation_id:
+                    await websocket_manager.subscribe_to_simulation(client_id, simulation_id)
+                    await websocket_manager.send_personal_message({
+                        "type": "subscribed",
+                        "simulation_id": simulation_id,
+                        "message": f"Subscribed to simulation updates"
+                    }, client_id)
+                else:
+                    await websocket_manager.send_personal_message({
+                        "type": "error",
+                        "message": "simulation_id is required for subscribe"
+                    }, client_id)
+            
+            elif message_type == "ping":
+                await websocket_manager.send_personal_message({
+                    "type": "pong",
+                    "timestamp": str(__import__('datetime').datetime.utcnow())
+                }, client_id)
+            
+            else:
+                await websocket_manager.send_personal_message({
+                    "type": "error",
+                    "message": f"Unknown message type: {message_type}"
+                }, client_id)
+                
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected: {client_id}")
+        websocket_manager.disconnect(client_id)
+    except Exception as e:
+        logger.error(f"WebSocket error for {client_id}: {e}")
+        websocket_manager.disconnect(client_id)
+
+
+@router.websocket("/ws/simulate/{topic}")
+async def websocket_simulate(websocket: WebSocket, topic: str):
+    """
+    WebSocket endpoint that automatically runs a simulation and streams results.
+    
+    This is the MOST IMPRESSIVE endpoint for demos!
+    Just connect and watch the simulation happen in real-time.
+    """
+    from services.agent_service import agent_service
+    from services.simulation_service import simulation_service
+    
+    client_id = str(uuid.uuid4())
+    await websocket_manager.connect(websocket, client_id)
+    
+    try:
+        # Decode topic from URL
+        topic_decoded = topic.replace("_", " ")
+        
+        logger.info(f"Starting live simulation via WebSocket: {topic_decoded}")
+        
+        # Notify client simulation is starting
+        await websocket_manager.send_personal_message({
+            "type": "simulation_starting",
+            "topic": topic_decoded,
+            "message": "🚀 Starting multi-agent simulation..."
+        }, client_id)
+        
+        # Spawn agents
+        agents = agent_service.spawn_agents(context=topic_decoded)
+        
+        await websocket_manager.send_personal_message({
+            "type": "agents_spawned",
+            "agents_count": len(agents),
+            "agents": [{"role": a["role"], "personality": a["personality"][:50]} for a in agents],
+            "message": f"✨ {len(agents)} AI agents spawned and ready"
+        }, client_id)
+        
+        # Create callback for real-time updates
+        async def simulation_callback(update: dict):
+            await websocket_manager.send_personal_message(update, client_id)
+        
+        # Run simulation with callback
+        result = await simulation_service.run_simulation(
+            agents=agents,
+            topic=topic_decoded,
+            rounds=3,
+            callback=simulation_callback
+        )
+        
+        # Send final result
+        await websocket_manager.send_personal_message({
+            "type": "simulation_complete",
+            "message": "✅ Simulation completed successfully!",
+            "result": {
+                "simulation_id": result.get("simulation_id"),
+                "status": result.get("status"),
+                "messages_count": len(result.get("messages", [])),
+                "consensus": result.get("consensus")
+            }
+        }, client_id)
+        
+        # Keep connection open for a bit in case client wants to query more
+        try:
+            while True:
+                data = await websocket.receive_json()
+                if data.get("type") == "close":
+                    break
+        except:
+            pass
+        
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket simulation disconnected: {client_id}")
+        websocket_manager.disconnect(client_id)
+    except Exception as e:
+        logger.error(f"WebSocket simulation error: {e}")
+        try:
+            await websocket_manager.send_personal_message({
+                "type": "error",
+                "message": f"Simulation failed: {str(e)}"
+            }, client_id)
+        except:
+            pass
+        websocket_manager.disconnect(client_id)
+
+
+@router.get("/ws/stats")
+async def websocket_stats():
+    """Get WebSocket connection statistics."""
+    return {
+        "active_connections": websocket_manager.get_active_connections_count(),
+        "message": "WebSocket server is running"
+    }
