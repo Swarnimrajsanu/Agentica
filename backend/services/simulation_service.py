@@ -110,10 +110,19 @@ class SimulationService:
                 conversation=all_messages
             )
             
+            # Run LLM Aggregation Engine for final prediction
+            from services.aggregation_engine import aggregation_engine
+            final_prediction = await aggregation_engine.generate_final_prediction(
+                topic=topic,
+                messages=all_messages,
+                consensus=consensus
+            )
+            
             # Complete simulation
             self.active_simulations[simulation_id]["status"] = "completed"
             self.active_simulations[simulation_id]["messages"] = all_messages
             self.active_simulations[simulation_id]["consensus"] = consensus
+            self.active_simulations[simulation_id]["final_prediction"] = final_prediction
             
             result = {
                 "simulation_id": simulation_id,
@@ -122,7 +131,8 @@ class SimulationService:
                 "agents": agents,
                 "rounds_completed": max_rounds,
                 "messages": all_messages,
-                "consensus": consensus
+                "consensus": consensus,
+                "final_prediction": final_prediction  # NEW: LLM-generated prediction
             }
             
             if callback:
