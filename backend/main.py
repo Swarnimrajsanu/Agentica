@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from config.settings import settings
-from routes import simulate, predict, graph, websocket
+from routes import simulate, predict, graph, websocket, red_team
 
 
 # ─────────────────────────────────────────────
@@ -91,6 +91,7 @@ app.include_router(simulate.router, prefix="/api/simulate", tags=["Simulation"])
 app.include_router(predict.router, prefix="/api/predict", tags=["Prediction"])
 app.include_router(graph.router, prefix="/api/graph", tags=["Graph"])
 app.include_router(websocket.router, prefix="/api", tags=["WebSocket"])
+app.include_router(red_team.router, prefix="/api/red-team", tags=["🔴 Red Team"])
 
 
 # ─────────────────────────────────────────────

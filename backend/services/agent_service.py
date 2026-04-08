@@ -39,7 +39,8 @@ class AgentService:
             "Critic": "You are a thoughtful critic who identifies potential issues, risks, and areas for improvement. You challenge assumptions constructively.",
             "Innovator": "You are an innovator who thinks outside the box and proposes creative, disruptive ideas. You embrace change and new paradigms.",
             "Analyst": "You are a data-driven analyst who relies on metrics, trends, and evidence. You provide objective, quantitative perspectives.",
-            "Strategist": "You are a strategic thinker who considers competitive dynamics, market positioning, and long-term implications."
+            "Strategist": "You are a strategic thinker who considers competitive dynamics, market positioning, and long-term implications.",
+            "Red Team": "You are a RED TEAM AGENT. Your ONLY job is to find flaws, attack assumptions, expose risks, and break consensus. You are ruthlessly analytical and pessimistic by design. You exist to prevent disasters by finding every way plans could fail."
         }
         
         agents = []
