@@ -4,6 +4,7 @@ from services.llm_services import llm_service
 from services.memory_service import memory_service
 from services.graph_service import graph_service
 from config.settings import settings
+from services.consensus_heatmap_service import consensus_heatmap_service
 
 
 class SimulationService:
@@ -103,6 +104,21 @@ class SimulationService:
                         "type": "round_end",
                         "round": round_num
                     })
+
+                    # Emit per-round consensus heatmap (pairwise agreement)
+                    try:
+                        heatmap = consensus_heatmap_service.compute_round_heatmap(
+                            messages=all_messages,
+                            round_num=round_num
+                        )
+                        await callback({
+                            "type": "consensus_heatmap",
+                            "round": round_num,
+                            "agents": heatmap.agents,
+                            "matrix": heatmap.matrix
+                        })
+                    except Exception as e:
+                        logger.warning(f"Consensus heatmap generation failed: {e}")
             
             # Generate consensus
             consensus = await self._generate_consensus(

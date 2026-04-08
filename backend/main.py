@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from config.settings import settings
-from routes import simulate, predict, graph, websocket, red_team, aggregation
+from routes import simulate, predict, graph, websocket, red_team, aggregation, decision_tree, consensus
 
 
 # ─────────────────────────────────────────────
@@ -93,6 +93,8 @@ app.include_router(graph.router, prefix="/api/graph", tags=["Graph"])
 app.include_router(websocket.router, prefix="/api", tags=["WebSocket"])
 app.include_router(red_team.router, prefix="/api/red-team", tags=["🔴 Red Team"])
 app.include_router(aggregation.router, prefix="/api/aggregate", tags=["🧠 Aggregation Engine"])
+app.include_router(decision_tree.router, prefix="/api/tree", tags=["🌳 Decision Tree"])
+app.include_router(consensus.router, prefix="/api/consensus", tags=["📊 Consensus"])
 
 
 # ─────────────────────────────────────────────
