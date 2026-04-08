@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { Topbar } from "@/components/Topbar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { butterflyEffect, type ButterflyResponse } from "@/lib/api";
 
-export default function ButterflyPage() {
+function ButterflyInner() {
+  const params = useSearchParams();
   const [topic, setTopic] = useState("Should we launch an AI note-taking app?");
   const [simulationId, setSimulationId] = useState("");
   const [alternative, setAlternative] = useState(
@@ -17,6 +19,13 @@ export default function ButterflyPage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<ButterflyResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const t = params.get("topic");
+    const sid = params.get("simulation_id");
+    if (t) setTopic(t);
+    if (sid) setSimulationId(sid);
+  }, [params]);
 
   async function run() {
     setError(null);
@@ -84,6 +93,21 @@ export default function ButterflyPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function ButterflyPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="px-4 md:px-0">
+          <Topbar title="Butterfly Effect" status={{ connected: true, running: false }} />
+          <div className="mt-4 glass rounded-2xl p-4 text-sm text-white/55">Loading…</div>
+        </div>
+      }
+    >
+      <ButterflyInner />
+    </Suspense>
   );
 }
 

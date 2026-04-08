@@ -13,7 +13,17 @@ type SocketEvent =
   | { type: "consensus_heatmap"; round: number; agents: string[]; matrix: number[][] }
   | { type: "prediction_update"; round: number; consensus: unknown; prediction: unknown }
   | { type: "round_end"; round: number }
-  | { type: "simulation_complete"; result?: unknown; message?: string }
+  | {
+      type: "simulation_complete";
+      message?: string;
+      result?: {
+        simulation_id?: string;
+        status?: string;
+        messages_count?: number;
+        consensus?: unknown;
+        final_prediction?: unknown;
+      };
+    }
   | { type: "error"; message?: string };
 
 export type UseSimulationSocketState = {
@@ -23,6 +33,7 @@ export type UseSimulationSocketState = {
   messages: SimulationMessage[];
   heatmap?: { round: number; agents: string[]; matrix: number[][] };
   predictionUpdate?: { round: number; consensus: unknown; prediction: unknown };
+  completed?: { simulation_id?: string; final_prediction?: unknown };
   error?: string;
   sendHumanMessage: (args: { message: string; influence_level?: number; display_name?: string }) => void;
   close: () => void;
@@ -39,6 +50,7 @@ export function useSimulationSocket(topic: string): UseSimulationSocketState {
   const [heatmap, setHeatmap] = useState<UseSimulationSocketState["heatmap"]>();
   const [predictionUpdate, setPredictionUpdate] =
     useState<UseSimulationSocketState["predictionUpdate"]>();
+  const [completed, setCompleted] = useState<UseSimulationSocketState["completed"]>();
   const [error, setError] = useState<string | undefined>();
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -80,6 +92,7 @@ export function useSimulationSocket(topic: string): UseSimulationSocketState {
         setRunning(true);
         setMessages([]);
         setRound(null);
+        setCompleted(undefined);
       }
 
       if (data.type === "round_start") setRound(data.round);
@@ -99,6 +112,10 @@ export function useSimulationSocket(topic: string): UseSimulationSocketState {
 
       if (data.type === "simulation_complete") {
         setRunning(false);
+        setCompleted({
+          simulation_id: data.result?.simulation_id,
+          final_prediction: data.result?.final_prediction,
+        });
       }
 
       if (data.type === "error") {
@@ -144,6 +161,7 @@ export function useSimulationSocket(topic: string): UseSimulationSocketState {
     messages,
     heatmap,
     predictionUpdate,
+    completed,
     error,
     sendHumanMessage,
     close,

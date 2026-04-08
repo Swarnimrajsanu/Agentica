@@ -75,7 +75,9 @@ class LLMAggregationEngine:
         
         # Calculate overall confidence
         confidence_scores = []
-        if "agreement_level" in prediction["weighted_consensus"]:
+        if "weighted_agreement_level" in prediction["weighted_consensus"]:
+            confidence_scores.append(prediction["weighted_consensus"]["weighted_agreement_level"])
+        elif "agreement_level" in prediction["weighted_consensus"]:
             confidence_scores.append(prediction["weighted_consensus"]["agreement_level"])
         if "confidence_score" in prediction["final_prediction"]:
             confidence_scores.append(prediction["final_prediction"]["confidence_score"])
@@ -327,11 +329,11 @@ Respond in JSON:
   ],
   "critical_success_factors": ["factor1", "factor2"],
   "fatal_flaws": ["flaw1"] or [],
-  "timeline": {
+  "timeline": {{
     "short_term_outlook": "0-6 months",
     "medium_term_outlook": "6-18 months",
     "long_term_outlook": "18+ months"
-  },
+  }},
   "key_metrics_to_track": ["metric1", "metric2"],
   "decision_recommendation": "go|no-go|go-with-conditions|needs-more-research",
   "executive_summary": "2-3 sentence summary for decision makers"
@@ -369,6 +371,13 @@ Respond in JSON:
         try:
             return json.loads(text)
         except json.JSONDecodeError:
+            json_match = re.search(r'```(?:json)?\s*\n(.*?)\n\s*```', text, re.DOTALL)
+            if json_match:
+                try:
+                    return json.loads(json_match.group(1))
+                except:
+                    pass
+            
             json_match = re.search(r'\{.*\}', text, re.DOTALL)
             if json_match:
                 try:
