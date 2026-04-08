@@ -250,21 +250,17 @@ Your task is to:
 1. Identify key points of agreement
 2. Identify key points of disagreement
 3. Determine overall consensus level (0-100%)
-4. Summarize the main conclusions"""
+4. Summarize the main conclusions
+
+CRITICAL: You MUST respond with ONLY valid JSON. No markdown, no explanation, just the JSON object."""
         
         user_prompt = f"""Analyze this discussion about: {topic}
 
 Conversation:
 {conversation_text}
 
-Provide your analysis in JSON format:
-{{
-  "consensus": "Brief summary of the consensus reached",
-  "agreement_level": 75,  // 0-100 percentage
-  "key_agreements": ["point1", "point2"],
-  "key_disagreements": ["point1", "point2"],
-  "conclusions": ["conclusion1", "conclusion2"]
-}}"""
+Respond with ONLY this JSON format (no other text):
+{{"consensus": "Brief summary of the consensus reached", "agreement_level": 75, "key_agreements": ["point1", "point2"], "key_disagreements": ["point1", "point2"], "conclusions": ["conclusion1", "conclusion2"]}}"""
         
         response = await llm_service.call_llm(
             prompt=user_prompt,
@@ -273,22 +269,48 @@ Provide your analysis in JSON format:
             max_tokens=500
         )
         
-        # Parse JSON response
+        # Parse JSON response with robust extraction
         if response:
             try:
                 import json
-                consensus_data = json.loads(response)
-                return consensus_data
+                import re
+                
+                # Try direct parsing first
+                try:
+                    consensus_data = json.loads(response)
+                    logger.info("Consensus JSON parsed successfully")
+                    return consensus_data
+                except json.JSONDecodeError:
+                    # Try to extract JSON from markdown code blocks
+                    json_match = re.search(r'```json\s*\n(.*?)\n\s*```', response, re.DOTALL)
+                    if json_match:
+                        json_str = json_match.group(1)
+                        consensus_data = json.loads(json_str)
+                        logger.info("Consensus JSON extracted from markdown block")
+                        return consensus_data
+                    
+                    # Try to find JSON object in response
+                    json_match = re.search(r'\{.*\}', response, re.DOTALL)
+                    if json_match:
+                        json_str = json_match.group(0)
+                        consensus_data = json.loads(json_str)
+                        logger.info("Consensus JSON extracted using regex")
+                        return consensus_data
+                    
+                    raise ValueError("No valid JSON found in response")
+                    
             except Exception as e:
                 logger.error(f"Error parsing consensus JSON: {e}")
+                logger.debug(f"Raw response: {response[:200]}")
         
-        # Fallback
+        # Fallback - create consensus from conversation
+        logger.warning("Using fallback consensus generation")
         return {
-            "consensus": response or "Unable to determine consensus",
+            "consensus": f"Discussion completed with {len(conversation)} messages from {len(set(msg.get('agent_role', '') for msg in conversation))} agents",
             "agreement_level": 50,
             "key_agreements": [],
             "key_disagreements": [],
-            "conclusions": []
+            "conclusions": [msg.get('content', '')[:100] for msg in conversation[-3:]]
         }
     
     def get_simulation_status(self, simulation_id: str) -> Optional[Dict]:

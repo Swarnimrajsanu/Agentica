@@ -59,24 +59,49 @@ Provide a comprehensive analysis in JSON format:
         try:
             result = await llm_service.call_llm(
                 prompt=prompt,
-                system_prompt="You are an expert analyst. Always respond with valid JSON.",
+                system_prompt="You are an expert analyst. Always respond with ONLY valid JSON. No markdown, no explanation.",
                 temperature=0.3,
                 max_tokens=800
             )
             
             if result:
-                # Parse JSON response
+                # Parse JSON response with robust extraction
                 try:
-                    prediction_data = json.loads(result)
-                    logger.info("Prediction generated successfully")
-                    return prediction_data
-                except json.JSONDecodeError as e:
+                    import json
+                    import re
+                    
+                    # Try direct parsing first
+                    try:
+                        prediction_data = json.loads(result)
+                        logger.info("Prediction JSON parsed successfully")
+                        return prediction_data
+                    except json.JSONDecodeError:
+                        # Try to extract JSON from markdown code blocks
+                        json_match = re.search(r'```json\s*\n(.*?)\n\s*```', result, re.DOTALL)
+                        if json_match:
+                            json_str = json_match.group(1)
+                            prediction_data = json.loads(json_str)
+                            logger.info("Prediction JSON extracted from markdown block")
+                            return prediction_data
+                        
+                        # Try to find JSON object in response
+                        json_match = re.search(r'\{.*\}', result, re.DOTALL)
+                        if json_match:
+                            json_str = json_match.group(0)
+                            prediction_data = json.loads(json_str)
+                            logger.info("Prediction JSON extracted using regex")
+                            return prediction_data
+                        
+                        raise ValueError("No valid JSON found in response")
+                        
+                except Exception as e:
                     logger.error(f"Error parsing prediction JSON: {e}")
-                    # Return raw result if JSON parsing fails
+                    logger.debug(f"Raw response: {result[:200]}")
+                    # Return structured result if JSON parsing fails
                     return {
-                        "final_decision": result[:200],
+                        "final_decision": result[:200] if result else "Unable to generate prediction",
                         "confidence": 50,
-                        "key_reasoning": [result],
+                        "key_reasoning": [result[:300] if result else "No response"],
                         "risks": [],
                         "recommendations": []
                     }
@@ -124,16 +149,27 @@ Return JSON:
         try:
             result = await llm_service.call_llm(
                 prompt=prompt,
-                system_prompt="You are a sentiment analysis expert. Always respond with valid JSON.",
+                system_prompt="You are a sentiment analysis expert. Always respond with ONLY valid JSON. No markdown.",
                 temperature=0.2,
                 max_tokens=400
             )
             
             if result:
                 try:
-                    sentiment_data = json.loads(result)
-                    return sentiment_data
-                except json.JSONDecodeError:
+                    import json
+                    import re
+                    
+                    # Try to extract JSON
+                    try:
+                        sentiment_data = json.loads(result)
+                        return sentiment_data
+                    except json.JSONDecodeError:
+                        json_match = re.search(r'\{.*\}', result, re.DOTALL)
+                        if json_match:
+                            return json.loads(json_match.group(0))
+                        raise
+                    
+                except Exception:
                     return {"overall": "unknown", "scores": {}}
             
             return {"overall": "unknown", "scores": {}}
@@ -182,15 +218,25 @@ Analyze how this small change could create a butterfly effect. Return JSON:
         try:
             result = await llm_service.call_llm(
                 prompt=prompt,
-                system_prompt="You are a chaos theory and systems thinking expert. Always respond with valid JSON.",
+                system_prompt="You are a chaos theory and systems thinking expert. Always respond with ONLY valid JSON. No markdown.",
                 temperature=0.5,
                 max_tokens=600
             )
             
             if result:
                 try:
-                    return json.loads(result)
-                except json.JSONDecodeError:
+                    import json
+                    import re
+                    
+                    # Try to extract JSON
+                    try:
+                        return json.loads(result)
+                    except json.JSONDecodeError:
+                        json_match = re.search(r'\{.*\}', result, re.DOTALL)
+                        if json_match:
+                            return json.loads(json_match.group(0))
+                        return None
+                except Exception:
                     return None
             
             return None

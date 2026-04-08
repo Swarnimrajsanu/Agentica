@@ -35,14 +35,14 @@ class GraphService:
                 # Default query - can be customized based on use case
                 cypher_query = """
                 MATCH (n)-[r]->(m)
-                WHERE n.name CONTAINS $query OR m.name CONTAINS $query
+                WHERE n.name CONTAINS $search_term OR m.name CONTAINS $search_term
                 RETURN n, r, m
                 LIMIT $limit
                 """
                 
                 result = session.run(
                     cypher_query,
-                    query=query,
+                    search_term=query,
                     limit=limit
                 )
                 

@@ -31,9 +31,88 @@ class PredictionResponse(BaseModel):
     sentiment: Optional[Dict[str, Any]] = None
 
 
+class ButterflyEffectRequest(BaseModel):
+    """Request model for butterfly effect analysis."""
+    topic: str = Field(..., description="Discussion topic", min_length=3, max_length=500)
+    simulation_id: str = Field(..., description="Original simulation ID")
+    alternative_scenario: str = Field(..., description="Alternative scenario to analyze", min_length=10)
+
+
 # ─────────────────────────────────────────────
 # ENDPOINTS
 # ─────────────────────────────────────────────
+
+@router.post("/butterfly-effect")
+async def butterfly_effect(request: ButterflyEffectRequest):
+    """
+    Analyze butterfly effect - how small changes impact outcomes.
+    
+    Requires an existing simulation to compare against.
+    Note: The simulation must have been run in the current server session.
+    """
+    try:
+        logger.info(f"Analyzing butterfly effect for: {request.topic}")
+        logger.info(f"Looking for simulation ID: {request.simulation_id}")
+        
+        # Get original simulation
+        sim_status = simulation_service.get_simulation_status(request.simulation_id)
+        
+        if not sim_status:
+            # List available simulations to help user
+            available_sims = simulation_service.list_active_simulations()
+            sim_ids = [s.get('id') or s.get('simulation_id') for s in available_sims]
+            
+            raise HTTPException(
+                status_code=404, 
+                detail={
+                    "error": "Simulation not found",
+                    "message": "The simulation ID doesn't exist or was lost due to server restart",
+                    "provided_id": request.simulation_id,
+                    "available_simulations": sim_ids[:5],  # Show first 5
+                    "hint": "Run a simulation first using POST /api/simulate, then use the simulation_id from the response"
+                }
+            )
+        
+        if sim_status.get("status") != "completed":
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Original simulation not completed. Current status: {sim_status.get('status')}"
+            )
+        
+        original_messages = sim_status.get("messages", [])
+        
+        if not original_messages:
+            raise HTTPException(
+                status_code=400,
+                detail="Simulation has no messages to analyze"
+            )
+        
+        # Generate butterfly effect analysis
+        analysis = await prediction_service.generate_butterfly_effect(
+            topic=request.topic,
+            original_messages=original_messages,
+            alternative_scenario=request.alternative_scenario
+        )
+        
+        if not analysis:
+            raise HTTPException(status_code=500, detail="Failed to generate butterfly effect analysis")
+        
+        return {
+            "original_simulation_id": request.simulation_id,
+            "topic": request.topic,
+            "alternative_scenario": request.alternative_scenario,
+            "analysis": analysis
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Butterfly effect analysis error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
+
 
 @router.post("/", response_model=PredictionResponse)
 async def predict(request: PredictionRequest):
@@ -97,61 +176,6 @@ async def predict(request: PredictionRequest):
         raise
     except Exception as e:
         logger.error(f"Prediction error: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error: {str(e)}"
-        )
-
-
-class ButterflyEffectRequest(BaseModel):
-    """Request model for butterfly effect analysis."""
-    topic: str = Field(..., description="Discussion topic", min_length=3, max_length=500)
-    simulation_id: str = Field(..., description="Original simulation ID")
-    alternative_scenario: str = Field(..., description="Alternative scenario to analyze", min_length=10)
-
-
-@router.post("/butterfly-effect")
-async def butterfly_effect(request: ButterflyEffectRequest):
-    """
-    Analyze butterfly effect - how small changes impact outcomes.
-    
-    Requires an existing simulation to compare against.
-    """
-    try:
-        logger.info(f"Analyzing butterfly effect for: {request.topic}")
-        
-        # Get original simulation
-        sim_status = simulation_service.get_simulation_status(request.simulation_id)
-        
-        if not sim_status:
-            raise HTTPException(status_code=404, detail="Original simulation not found")
-        
-        if sim_status.get("status") != "completed":
-            raise HTTPException(status_code=400, detail="Original simulation not completed")
-        
-        original_messages = sim_status.get("messages", [])
-        
-        # Generate butterfly effect analysis
-        analysis = await prediction_service.generate_butterfly_effect(
-            topic=request.topic,
-            original_messages=original_messages,
-            alternative_scenario=request.alternative_scenario
-        )
-        
-        if not analysis:
-            raise HTTPException(status_code=500, detail="Failed to generate butterfly effect analysis")
-        
-        return {
-            "original_simulation_id": request.simulation_id,
-            "topic": request.topic,
-            "alternative_scenario": request.alternative_scenario,
-            "analysis": analysis
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Butterfly effect analysis error: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Internal server error: {str(e)}"
