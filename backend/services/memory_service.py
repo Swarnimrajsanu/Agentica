@@ -80,6 +80,19 @@ class MemoryService:
         except Exception as e:
             logger.error(f"Error deleting simulation {simulation_id}: {e}")
             return False
+
+    async def clear_all_simulations(self) -> bool:
+        """
+        Clear all simulation history.
+        """
+        try:
+            await self.simulations_collection.delete_many({})
+            await self.messages_collection.delete_many({})
+            logger.info("Cleared all simulation history")
+            return True
+        except Exception as e:
+            logger.error(f"Error clearing all simulations: {e}")
+            return False
     
     def _sanitize_document(self, doc: dict) -> dict:
         """

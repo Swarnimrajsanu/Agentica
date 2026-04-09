@@ -14,7 +14,8 @@ import { useSimulationSocket } from "@/hooks/useSimulationSocket";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/cn";
 import { RelationshipGraph } from "@/components/RelationshipGraph";
-import { Trash2 } from "lucide-react";
+import { RedTeamReport } from "@/components/RedTeamReport";
+import { Trash2, ShieldAlert } from "lucide-react";
 
 type Stance = "support" | "oppose" | "neutral";
 
@@ -166,8 +167,15 @@ export default function SimulationPage() {
   const topic = params.get("topic") || "Should we launch an AI note-taking app?";
 
   const socket = useSimulationSocket(topic);
-  const [tab, setTab] = useState<"twitter" | "reddit" | "graph">("twitter");
+  const [tab, setTab] = useState<"twitter" | "reddit" | "graph" | "redteam" | "prediction">("twitter");
   const [allSims, setAllSims] = useState<any[]>([]);
+
+  // Auto-switch to prediction when done
+  useEffect(() => {
+    if (socket.completed) {
+        setTab("prediction");
+    }
+  }, [socket.completed]);
 
   // Fetch all simulations (active + history)
   useEffect(() => {
@@ -210,6 +218,18 @@ export default function SimulationPage() {
         setAllSims(prev => prev.filter(s => (s.id || s.simulation_id) !== simId));
     } catch (err) {
         console.error("Delete failed", err);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!confirm("Are you sure you want to clear ALL simulation history? This cannot be undone.")) return;
+    
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api";
+    try {
+        await fetch(`${apiBase}/simulate/history/clear-all`, { method: 'DELETE' });
+        setAllSims([]);
+    } catch (err) {
+        console.error("Clear failed", err);
     }
   };
 
@@ -349,8 +369,16 @@ export default function SimulationPage() {
         {/* LEFT: Active Agents + Simulations */}
         <div className="lg:col-span-3 space-y-4">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle>Simulation History</CardTitle>
+              {allSims.length > 0 && (
+                  <button 
+                    onClick={handleClearAll}
+                    className="text-[10px] text-red-500/50 hover:text-red-500 transition px-2 py-1 rounded hover:bg-red-500/5"
+                  >
+                    Clear All
+                  </button>
+              )}
             </CardHeader>
             <CardContent className="space-y-2">
               {allSims.length === 0 ? (
@@ -490,7 +518,25 @@ export default function SimulationPage() {
                 )}
                 onClick={() => setTab("graph")}
               >
-                Live Relationship Graph
+                Live Graph
+              </button>
+              <button
+                className={cn(
+                  "glass rounded-2xl px-3 py-2 text-sm font-semibold text-white/70 transition flex items-center justify-center gap-2",
+                  tab === "redteam" && "ring-2 ring-red-500/50 text-red-400 bg-red-500/10",
+                )}
+                onClick={() => setTab("redteam")}
+              >
+                <ShieldAlert size={14} /> Red Team
+              </button>
+              <button
+                className={cn(
+                  "glass rounded-2xl px-3 py-2 text-sm font-semibold text-white/70 transition",
+                  tab === "prediction" && "ring-2 ring-purple-500/50 text-purple-400 bg-purple-500/10",
+                )}
+                onClick={() => setTab("prediction")}
+              >
+                Prediction
               </button>
             </div>
 
@@ -545,6 +591,110 @@ export default function SimulationPage() {
               {tab === "graph" && (
                 <div className="h-[480px] w-full">
                     <RelationshipGraph messages={socket.messages} graphData={socket.graphData} />
+                </div>
+              )}
+
+              {tab === "redteam" && (
+                <div className="h-[480px] w-full overflow-auto pr-2 custom-scrollbar">
+                    <RedTeamReport data={socket.redTeamData} />
+                </div>
+              )}
+
+              {tab === "prediction" && (
+                <div className="h-[480px] w-full overflow-auto pr-2 custom-scrollbar space-y-6 p-2">
+                    {socket.predictionUpdate ? (
+                        <div className="space-y-6">
+                            <div className="glass rounded-3xl p-6 border border-purple-500/20 bg-gradient-to-br from-purple-500/5 to-transparent text-center">
+                                <div className="text-[10px] text-purple-400 uppercase tracking-[0.2em] mb-2 font-bold">Final Consensus Projection</div>
+                                <h1 className="text-2xl font-bold text-white/90 leading-tight">{(socket.predictionUpdate.prediction as any)?.final_decision || "No prediction yet"}</h1>
+                                <div className="mt-4 flex items-center justify-center gap-6">
+                                    <div className="text-center">
+                                        <div className="text-2xl font-mono font-bold text-purple-400">{(socket.predictionUpdate.prediction as any)?.confidence}%</div>
+                                        <div className="text-[9px] text-white/30 uppercase tracking-widest">Confidence</div>
+                                    </div>
+                                    <div className="h-8 w-px bg-white/10" />
+                                    <div className="text-center">
+                                        <div className="text-2xl font-mono font-bold text-blue-400">{(socket.predictionUpdate.prediction as any)?.key_reasoning?.length || 0}</div>
+                                        <div className="text-[9px] text-white/30 uppercase tracking-widest">Core Proofs</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="glass rounded-2xl p-4 border border-white/5 space-y-3">
+                                    <h3 className="text-[11px] font-bold text-white/30 uppercase tracking-widest">Key Reasoning</h3>
+                                    <ul className="space-y-2">
+                                        {((socket.predictionUpdate.prediction as any)?.key_reasoning || []).map((r: string, i: number) => (
+                                            <li key={i} className="text-xs text-white/70 leading-relaxed flex gap-2">
+                                                <span className="text-purple-500/50">•</span> {r}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                                <div className="glass rounded-2xl p-4 border border-white/5 space-y-3">
+                                    <h3 className="text-[11px] font-bold text-white/30 uppercase tracking-widest text-orange-400/60">Identified Risks</h3>
+                                    <ul className="space-y-2">
+                                        {((socket.predictionUpdate.prediction as any)?.risks || []).map((r: string, i: number) => (
+                                            <li key={i} className="text-xs text-white/70 leading-relaxed flex gap-2">
+                                                <span className="text-orange-500/50">•</span> {r}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div className="glass rounded-2xl p-5 border border-white/5 bg-white/5 italic text-sm text-white/60 leading-relaxed text-center">
+                                "{(socket.predictionUpdate.consensus as any)?.consensus || "Synthesis pending..."}"
+                            </div>
+
+                            {/* Red Team Integration into Prediction */}
+                            {socket.redTeamData && (
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-2 px-2">
+                                        <ShieldAlert size={14} className="text-red-500" />
+                                        <h3 className="text-[11px] font-bold text-red-500 uppercase tracking-widest">Adversarial Counter-Analysis</h3>
+                                    </div>
+                                    <div className="glass rounded-2xl p-5 border border-red-500/20 bg-red-500/5 relative overflow-hidden">
+                                        <div className="absolute top-0 right-0 p-4 opacity-10">
+                                            <ShieldAlert size={64} />
+                                        </div>
+                                        <div className="flex items-center justify-between mb-4">
+                                            <div className="text-xs text-white/50 italic">"The agents may be suffering from groupthink. Red Team has found significant blind spots in the proposed decision."</div>
+                                            <div className="text-right">
+                                                <div className="text-xl font-mono font-bold text-red-400">{socket.redTeamData.revised_confidence}%</div>
+                                                <div className="text-[9px] text-white/30 uppercase tracking-widest leading-none">Adjusted Conf.</div>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-3">
+                                            {(socket.redTeamData.vulnerabilities || []).slice(0, 2).map((v: any, i: number) => (
+                                                <div key={i} className="flex gap-3 items-start border-l-2 border-red-500/30 pl-3">
+                                                    <div>
+                                                        <div className="text-[10px] font-bold text-red-400">{v.level} — {v.name}</div>
+                                                        <div className="text-[10px] text-white/60 leading-relaxed">{v.description}</div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="mt-4 pt-4 border-t border-white/5 text-center">
+                                            <button 
+                                                onClick={() => setTab("redteam")}
+                                                className="text-[10px] text-red-400/80 hover:text-red-400 underline decoration-red-400/30 underline-offset-4"
+                                            >
+                                                View Full Adversarial Report
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-white/30 space-y-4">
+                            <div className="animate-pulse h-12 w-12 rounded-full border-2 border-purple-500/20 flex items-center justify-center">
+                                <div className="h-6 w-6 rounded-full border-2 border-purple-500/40 border-t-purple-500 animate-spin" />
+                            </div>
+                            <p className="text-xs font-mono uppercase tracking-widest">Synthesizing Final Prediction...</p>
+                        </div>
+                    )}
                 </div>
               )}
 

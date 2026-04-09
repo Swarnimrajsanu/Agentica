@@ -193,7 +193,7 @@ class SimulationService:
                     except Exception as e:
                         logger.warning(f"Consensus heatmap generation failed: {e}")
 
-                    # Dynamic prediction update after each round (includes any human posts)
+                    # Dynamic prediction update after each round
                     try:
                         interim_consensus = await self._generate_consensus(topic=topic, conversation=all_messages)
                         interim_prediction = await aggregation_engine.generate_final_prediction(
@@ -201,19 +201,45 @@ class SimulationService:
                             messages=all_messages,
                             consensus=interim_consensus
                         )
-                        await callback({
-                            "type": "prediction_update",
-                            "round": round_num,
-                            "consensus": interim_consensus,
-                            "prediction": interim_prediction
-                        })
+                        if callback:
+                            await callback({
+                                "type": "prediction_update",
+                                "round": round_num,
+                                "consensus": interim_consensus,
+                                "prediction": interim_prediction
+                            })
                     except Exception as e:
                         logger.warning(f"Dynamic prediction update failed: {e}")
-            
+
+                    # Red Team Analysis update after each round
+                    try:
+                        red_team_analysis = await self._generate_red_team_analysis(
+                            topic=topic, 
+                            conversation=all_messages,
+                            consensus=interim_consensus,
+                            prediction=interim_prediction
+                        )
+                        if callback:
+                            await callback({
+                                "type": "red_team_update",
+                                "round": round_num,
+                                "analysis": red_team_analysis
+                            })
+                    except Exception as e:
+                        logger.warning(f"Live Red Team analysis failed: {e}")
+             
             # Generate consensus
             consensus = await self._generate_consensus(
                 topic=topic,
                 conversation=all_messages
+            )
+            
+            # Generate final red team report
+            final_red_team = await self._generate_red_team_analysis(
+                topic=topic, 
+                conversation=all_messages,
+                consensus=consensus,
+                prediction=final_prediction
             )
             
             # Run LLM Aggregation Engine for final prediction
@@ -229,6 +255,7 @@ class SimulationService:
             self.active_simulations[simulation_id]["messages"] = all_messages
             self.active_simulations[simulation_id]["consensus"] = consensus
             self.active_simulations[simulation_id]["final_prediction"] = final_prediction
+            self.active_simulations[simulation_id]["red_team_report"] = final_red_team
             
             # PERSIST COMPLETION
             await memory_service.save_simulation(simulation_id, self.active_simulations[simulation_id])
@@ -241,7 +268,8 @@ class SimulationService:
                 "rounds_completed": max_rounds,
                 "messages": all_messages,
                 "consensus": consensus,
-                "final_prediction": final_prediction  # NEW: LLM-generated prediction
+                "final_prediction": final_prediction,
+                "red_team_report": final_red_team
             }
             
             if callback:
@@ -439,6 +467,56 @@ Respond with ONLY this JSON format (no other text):
             "key_disagreements": [],
             "conclusions": [msg.get('content', '')[:100] for msg in conversation[-3:]]
         }
+
+    async def _generate_red_team_analysis(self, topic: str, conversation: List[Dict], consensus: Dict = None, prediction: Dict = None) -> Dict:
+        """Adversarial analysis of simulation and its current consensus."""
+        if not conversation:
+            return {"vulnerabilities": [], "revised_confidence": 0, "blind_spots": []}
+            
+        conv_text = "\n".join([f"{m['agent_role']}: {m['content']}" for m in conversation[-15:]])
+        consensus_text = consensus.get("consensus", "") if consensus else "No consensus reached yet."
+        decision_text = prediction.get("final_decision", "") if prediction else "No final decision yet."
+
+        prompt = f"""Perform a Red Team adversarial analysis of this AI agent simulation.
+        Topic: {topic}
+        
+        Current Consensus: {consensus_text}
+        Proposed Final Decision: {decision_text}
+        
+        Conversation Context:
+        {conv_text}
+        
+        MISSION: Play Devil's Advocate. Your job is to find why the agents are WRONG. 
+        Attack the groupthink. Find the critical vulnerabilities, systemic blind spots, and a worst-case scenario that would derail this plan.
+        
+        Respond with ONLY JSON:
+        {{
+          "revised_confidence": 65,
+          "vulnerabilities": [
+            {{
+              "level": "CRITICAL|HIGH|MEDIUM|LOW",
+              "name": "Title",
+              "description": "Short desc",
+              "missedBy": ["AgentName"],
+              "mitigation": "Fix",
+              "details": "Nitty gritty"
+            }}
+          ],
+          "blind_spots": ["point 1", "point 2"],
+          "worst_case": "description"
+        }}
+        """
+        
+        try:
+            res = await llm_service.call_llm(prompt, temperature=0.7)
+            import json, re
+            match = re.search(r'\{.*\}', res, re.DOTALL)
+            if match:
+                return json.loads(match.group(0))
+        except Exception as e:
+            logger.warning(f"Red Team generation failed: {e}")
+            
+        return {"vulnerabilities": [], "revised_confidence": 50, "blind_spots": ["No blind spots identified by automated scan"]}
     
     def get_simulation_status(self, simulation_id: str) -> Optional[Dict]:
         """Get status of a specific simulation."""

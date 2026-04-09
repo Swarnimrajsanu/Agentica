@@ -10,12 +10,14 @@ import {
   LineChart,
   GitCompare,
   MessagesSquare,
+  ShieldAlert,
 } from "lucide-react";
 
 const nav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/new", label: "New Simulation", icon: Sparkles },
   { href: "/simulation", label: "Simulation", icon: MessageSquareText },
+  { href: "/redteam", label: "Red Team", icon: ShieldAlert },
   { href: "/predictions", label: "Predictions", icon: LineChart },
   { href: "/butterfly", label: "Butterfly Effect", icon: GitCompare },
   { href: "/agent-chat", label: "Agent Chat", icon: MessagesSquare },

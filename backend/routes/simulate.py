@@ -138,6 +138,16 @@ async def delete_simulation(simulation_id: str):
     return {"message": "Simulation deleted successfully"}
 
 
+@router.delete("/history/clear-all")
+async def clear_all_history():
+    """Clear all simulation history."""
+    from services.memory_service import memory_service
+    success = await memory_service.clear_all_simulations()
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to clear history")
+    return {"message": "All history cleared"}
+
+
 @router.post("/{simulation_id}/inject-human", response_model=HumanInjectResponse)
 async def inject_human(simulation_id: str, request: HumanInjectRequest):
     """

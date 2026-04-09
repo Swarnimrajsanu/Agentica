@@ -128,6 +128,27 @@ async def websocket_simulate(websocket: WebSocket, topic: str):
                     "prediction": active_sim.get("final_prediction")
                 }, client_id)
             
+            # Send latest red team report if it exists
+            if active_sim.get("red_team_report"):
+                 await websocket_manager.send_personal_message({
+                    "type": "red_team_update",
+                    "analysis": active_sim.get("red_team_report")
+                }, client_id)
+
+            # If it's already completed, send completion event
+            if active_sim.get("status") == "completed":
+                 await websocket_manager.send_personal_message({
+                    "type": "simulation_complete",
+                    "result": {
+                        "simulation_id": active_sim.get("simulation_id"),
+                        "status": "completed",
+                        "messages_count": len(active_sim.get("messages", [])),
+                        "consensus": active_sim.get("consensus"),
+                        "final_prediction": active_sim.get("final_prediction"),
+                        "red_team_report": active_sim.get("red_team_report"),
+                    }
+                }, client_id)
+            
             # Subscribe for future updates
             # Note: The run_simulation task will continue broadcasting to all subscribers
             # We need to make sure the simulation_callback broadcasts to everyone
@@ -181,8 +202,16 @@ async def websocket_simulate(websocket: WebSocket, topic: str):
 
         # Listen for client messages while simulation runs
         while True:
-            if sim_task.done():
+            # Check if task is finished or if global simulation is complete
+            if sim_task and sim_task.done():
                 break
+            
+            if not sim_task:
+                _curr = simulation_service.get_simulation_status(simulation_id)
+                if not _curr or _curr.get("status") != "running":
+                    # Update local sim_result for the final message
+                    sim_result = _curr or {}
+                    break
             try:
                 data = await asyncio.wait_for(websocket.receive_json(), timeout=0.5)
             except asyncio.TimeoutError:

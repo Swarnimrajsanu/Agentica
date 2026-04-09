@@ -22,9 +22,11 @@ type SocketEvent =
         messages_count?: number;
         consensus?: unknown;
         final_prediction?: unknown;
+        red_team_report?: any;
       };
     }
   | { type: "graph_update"; nodes: any[]; links: any[]; agent?: string }
+  | { type: "red_team_update"; round?: number; analysis: any }
   | { type: "error"; message?: string };
 
 export type UseSimulationSocketState = {
@@ -33,9 +35,10 @@ export type UseSimulationSocketState = {
   round: number | null;
   messages: SimulationMessage[];
   graphData: { nodes: any[]; links: any[] };
+  redTeamData: any | null;
   heatmap?: { round: number; agents: string[]; matrix: number[][] };
   predictionUpdate?: { round: number; consensus: unknown; prediction: unknown };
-  completed?: { simulation_id?: string; final_prediction?: unknown };
+  completed?: { simulation_id?: string; final_prediction?: unknown; red_team_report?: any };
   error?: string;
   sendHumanMessage: (args: { message: string; influence_level?: number; display_name?: string }) => void;
   close: () => void;
@@ -50,6 +53,7 @@ export function useSimulationSocket(topic: string): UseSimulationSocketState {
   const [round, setRound] = useState<number | null>(null);
   const [messages, setMessages] = useState<SimulationMessage[]>([]);
   const [graphData, setGraphData] = useState<{ nodes: any[]; links: any[] }>({ nodes: [], links: [] });
+  const [redTeamData, setRedTeamData] = useState<any | null>(null);
   const [heatmap, setHeatmap] = useState<UseSimulationSocketState["heatmap"]>();
   const [predictionUpdate, setPredictionUpdate] =
     useState<UseSimulationSocketState["predictionUpdate"]>();
@@ -95,6 +99,7 @@ export function useSimulationSocket(topic: string): UseSimulationSocketState {
         setRunning(true);
         setMessages([]);
         setGraphData({ nodes: [], links: [] });
+        setRedTeamData(null);
         setRound(null);
         setCompleted(undefined);
       }
@@ -117,6 +122,10 @@ export function useSimulationSocket(topic: string): UseSimulationSocketState {
         });
       }
 
+      if (data.type === "red_team_update") {
+          setRedTeamData(data.analysis);
+      }
+
       if (data.type === "consensus_heatmap") {
         setHeatmap({ round: data.round, agents: data.agents, matrix: data.matrix });
       }
@@ -130,7 +139,19 @@ export function useSimulationSocket(topic: string): UseSimulationSocketState {
         setCompleted({
           simulation_id: data.result?.simulation_id,
           final_prediction: data.result?.final_prediction,
+          red_team_report: data.result?.red_team_report,
         });
+        // Also sync to predictionUpdate for the UI
+        if (data.result?.final_prediction) {
+            setPredictionUpdate({
+                round: data.result.messages_count || 0,
+                consensus: data.result.consensus,
+                prediction: data.result.final_prediction
+            });
+        }
+        if (data.result?.red_team_report) {
+            setRedTeamData(data.result.red_team_report);
+        }
       }
 
       if (data.type === "error") {
@@ -175,6 +196,7 @@ export function useSimulationSocket(topic: string): UseSimulationSocketState {
     round,
     messages,
     graphData,
+    redTeamData,
     heatmap,
     predictionUpdate,
     completed,
