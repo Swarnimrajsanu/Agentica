@@ -71,12 +71,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",  # Next.js development
-        "http://localhost:3001",  # Alternative port
-        "http://localhost:8080",  # Vue/other frontend
-        "https://agentica.app",   # Production domain
-    ],
+    allow_origins=["*"],  # Allow all origins for development
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods
     allow_headers=["*"],  # Allow all headers

@@ -171,10 +171,16 @@ export default function SimulationPage() {
 
   // Fetch all simulations (active + history)
   useEffect(() => {
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api";
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE || "https://crispy-umbrella-97774w549xvqfxgj-8000.app.github.dev/api";
     Promise.all([
-        fetch(`${apiBase}/simulate/active`).then(res => res.json()),
-        fetch(`${apiBase}/simulate/history`).then(res => res.json())
+        fetch(`${apiBase}/simulate/active`).then(res => {
+          if (!res.ok) throw new Error(`Active fetch failed: ${res.status}`);
+          return res.json();
+        }),
+        fetch(`${apiBase}/simulate/history`).then(res => {
+          if (!res.ok) throw new Error(`History fetch failed: ${res.status}`);
+          return res.json();
+        })
     ]).then(([activeData, historyData]) => {
         const active = activeData.active_simulations || [];
         const history = historyData.history || [];
@@ -187,14 +193,18 @@ export default function SimulationPage() {
             }
         });
         setAllSims(combined);
-    }).catch(err => console.error("Failed to fetch simulations", err));
+    }).catch(err => {
+      console.error("Failed to fetch simulations:", err);
+      // Optionally set empty state or show error message
+      setAllSims([]);
+    });
   }, [topic]);
 
   const handleDelete = async (e: React.MouseEvent, simId: string) => {
     e.stopPropagation();
     if (!confirm("Are you sure you want to delete this simulation?")) return;
     
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000/api";
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE || "https://crispy-umbrella-97774w549xvqfxgj-8000.app.github.dev/api";
     try {
         await fetch(`${apiBase}/simulate/${simId}`, { method: 'DELETE' });
         setAllSims(prev => prev.filter(s => (s.id || s.simulation_id) !== simId));
